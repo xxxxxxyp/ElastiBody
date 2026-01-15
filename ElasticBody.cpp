@@ -223,7 +223,8 @@ VectorXd ElasticBody::gen_grad_f(){
             J = F.determinant();
             logJ = log(J);
             Ic = FtF.trace();
-            piola = mu * F - mu * FinvT + la * logJ * 0.5 * FinvT;
+            // piola = mu * F - mu * FinvT + la * logJ * 0.5 * FinvT;
+            piola = mu * F - mu * FinvT + la * logJ * FinvT;
             H = -volume[t] * piola * Dm_inv_list[t].transpose();
             gradC.row(1) = H.col(0);
             gradC.row(2) = H.col(1);
@@ -262,7 +263,8 @@ SparseMatrix<double> ElasticBody::gen_K(){
             Ic = FtF.trace();
             for (int i = 0; i < 12; ++i) {
                 dF[i] = dD[i] * Dm_inv_list[t];
-                dP[i] = mu * dF[i] + (mu - 0.5* la * logJ) * (FinvT * dF[i].transpose() * FinvT);
+                // dP[i] = mu * dF[i] + (mu - 0.5* la * logJ) * (FinvT * dF[i].transpose() * FinvT);
+                dP[i] = mu * dF[i] + (mu - la * logJ) * (FinvT * dF[i].transpose() * FinvT);
                 term = Finv * dF[i];
                 dP[i] += la * (term(0, 0) + term(1, 1) + term(2, 2)) * FinvT;
                 dH[i] = -volume[t] * dP[i] * Dm_inv_list[t].transpose();
@@ -308,7 +310,8 @@ void ElasticBody::gen_due(){
             logJ = log(J);
             
             //Ic = FtF.trace();
-            piola = mu_o*F - mu_o* FinvT + la_o * logJ * 0.5 * FinvT;
+            // piola = mu_o*F - mu_o* FinvT + la_o * logJ * 0.5 * FinvT;
+            piola = mu_o*F - mu_o* FinvT + la_o * logJ * FinvT;
             H = -volume[t] * piola * Dm_inv_list[t].transpose();
             gradC.row(1) = H.col(0);
             gradC.row(2) = H.col(1);
@@ -323,7 +326,8 @@ void ElasticBody::gen_due(){
             la = we[t]*la_o;
             for (int i = 0; i < 12; ++i) {
                 dF[i] = dD[i] * Dm_inv_list[t];
-                dP[i] = mu * dF[i] + (mu - 0.5 * la * logJ) * (FinvT * dF[i].transpose() * FinvT);
+                // dP[i] = mu * dF[i] + (mu - 0.5 * la * logJ) * (FinvT * dF[i].transpose() * FinvT);
+                dP[i] = mu * dF[i] + (mu - la * logJ) * (FinvT * dF[i].transpose() * FinvT);
                 term = Finv * dF[i];
                 dP[i] += la * (term(0, 0) + term(1, 1) + term(2, 2)) * FinvT;
                 dH[i] = -volume[t] * dP[i] * Dm_inv_list[t].transpose();
@@ -498,7 +502,8 @@ SparseMatrix<double> ElasticBody::gen_tangent_stiffness() {
         
         for (int i = 0; i < 12; ++i) {
             dF[i] = dD[i] * Dm_inv_list[t];
-            dP[i] = mu * dF[i] + (mu - 0.5* la * logJ) * (FinvT * dF[i].transpose() * FinvT);
+            // dP[i] = mu * dF[i] + (mu - 0.5* la * logJ) * (FinvT * dF[i].transpose() * FinvT);
+            dP[i] = mu * dF[i] + (mu - la * logJ) * (FinvT * dF[i].transpose() * FinvT);
             term = Finv * dF[i];
             dP[i] += la * (term(0, 0) + term(1, 1) + term(2, 2)) * FinvT;
             dH[i] = -volume[t] * dP[i] * Dm_inv_list[t].transpose();

@@ -17,6 +17,8 @@ class NHookeanForwardSolver:
         # 状态变量
         self.u = np.zeros(self.num_nodes * 3) # 当前位移向量 (flattened)
         self.f_ext = np.zeros(self.num_nodes * 3) # 外力向量
+
+        self.num_dofs = self.num_nodes * 3
         
         # 边界条件缓存
         self.fixed_dofs = [] # 被固定的自由度索引列表
