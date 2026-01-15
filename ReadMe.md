@@ -15,6 +15,22 @@
 │   ├── run_forward_sim.py
 │   ├── run_inverse_analysis.py
 │   ├── compute_metrics.py
+│   ├── data/
+│   │   ├── box-3.msh
+│   │   ├── A-*.txt / B-*.txt
+│   │   ├── pnt*.txt / force*.txt
+│   │   └── box-3-we-forward.txt
+│   ├── sim/
+│   │   ├── __init__.py
+│   │   ├── geometry/
+│   │   │   ├── __init__.py
+│   │   │   └── initializer.py
+│   │   ├── models/
+│   │   │   └── nhookean.py
+│   │   └── inverse/
+│   │       ├── regularization.py
+│   │       ├── sensitivity.py
+│   │       └── solver.py
 │   ├── nodes.txt
 │   ├── cells.txt
 │   └── debug_force_check.vtk
@@ -40,6 +56,13 @@
 - **run_forward_sim.py**：正向仿真脚本，基于外部 `sim` 包执行增量加载并导出数据。
 - **run_inverse_analysis.py**：反演示例脚本，调用 `sim.inverse` 执行参数反演并输出 VTK 结果。
 - **compute_metrics.py**：后处理脚本，计算变形梯度与主伸长率并导出 VTK 可视化。
+- **data/**：示例网格与仿真输出数据（A/B 稀疏矩阵、力与位移观测、`box-3.msh` 等）。
+- **sim/**：Python 端算法实现包。
+  - **geometry/initializer.py**：读取 mesh、修正四面体方向、初始化材料场并创建 C++ 后端对象。
+  - **models/nhookean.py**：前向求解器，执行 Newton 迭代并导出 A/B/force/pnt 数据。
+  - **inverse/solver.py**：反演主流程（灵敏度加权与正则化迭代）。
+  - **inverse/sensitivity.py**：构建基于 C++ 单元力的灵敏度矩阵。
+  - **inverse/regularization.py**：构建单元邻接拉普拉斯矩阵用于平滑正则化。
 - **nodes.txt / cells.txt**：四面体网格节点与单元索引数据，供 C++/Python 读取。
 - **debug_force_check.vtk**：调试用 VTK 结果文件，便于在 ParaView 中查看力场或变形分布。
 
