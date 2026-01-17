@@ -83,81 +83,83 @@ class NHookeanForwardSolver:
         K_mod = K + K_penalty
         return K_mod, R
 
-    def solve_static_step(self, force_input, step_index=0, tol=1e-4, max_iter=10):
-        """
-        :param force_input: 
-            可以是 float (标量): 会被自动施加到所有 Top Nodes (Z方向)
-            可以是 np.array (向量): 形状 (3*N,) 或 (N, 3)，直接作为外力向量 f_ext
-        """
-        # 1. 初始化外力向量
-        self.f_ext = np.zeros(self.num_dofs)
-        
-        # 2. 判断输入类型
+    def solve_static_step(self, force_input, step_index=0, tol=1e-4, max_iter=20):
+        # 1. 准备目标外力向量
+        target_f_ext = np.zeros(self.num_dofs)
         if isinstance(force_input, (float, int)):
-            # === 旧逻辑：标量均摊 ===
-            # 如果还没找过受力节点，找一下
-            if not hasattr(self, 'force_application_nodes'):
-                 z_coords = self.init.nodes[:, 2]
-                 z_max = np.max(z_coords)
-                 self.force_application_nodes = np.where(z_coords > z_max - 1e-5)[0]
-            
-            # 施加 Z 向力
-            for node_idx in self.force_application_nodes:
-                self.f_ext[3*node_idx + 2] = force_input
-                
+             # 简化的标量力处理 (仅作兼容)
+             z_coords = self.init.nodes[:, 2]
+             z_max = np.max(z_coords)
+             top_nodes = np.where(z_coords > z_max - 1e-5)[0]
+             for n_idx in top_nodes:
+                target_f_ext[3*n_idx + 2] = force_input
         elif isinstance(force_input, np.ndarray):
-            # === 新逻辑：直接映射 (您想要的) ===
-            # 自动展平为 (3N,)
-            f_flat = force_input.flatten()
-            
-            if f_flat.shape[0] != self.num_dofs:
-                raise ValueError(f"Force vector shape mismatch! Expected {self.num_dofs}, got {f_flat.shape[0]}")
-            
-            self.f_ext = f_flat
-            
-        else:
-            raise TypeError("force_input must be float or numpy array")
-            
-        # Newton-Raphson 迭代
-        for k in range(max_iter):
-            # 1. 注入位移
-            self.cpp.set_current_displacement(self.u)
-                
-            # 2. 获取 K 和 f_int
-            K_tangent = self.cpp.gen_tangent_stiffness() 
-            f_int = np.array(self.cpp.gen_grad_f())
-                
-            # 3. 计算残差 [CRITICAL FIX]
-            # 依据 C++ ElasticBody::eqn 的逻辑: dP = -(f_sensor + f_inter)
-            # 这里的 f_ext 对应 f_sensor, f_int 对应 f_inter
-            residual = - (self.f_ext + f_int)
-                
-            # [新增] 安全检查
-            if np.any(np.isnan(residual)):
-                raise RuntimeError("Solver exploded: Residual contains NaN.")
+            target_f_ext = force_input.flatten()
+        
+        self.f_ext = target_f_ext # 记录最终外力
 
-            # 4. 应用边界条件
-            K_mod, residual_mod = self._apply_bc_to_system(K_tangent, residual)
+        # 2. 增量加载策略 (Load Stepping)
+        # 如果力很大，分 4 步加载 (0.25, 0.5, 0.75, 1.0)
+        # 这样每一步的初始猜测都比较好
+        n_substeps = 4 
+        
+        # 记录每一步的位移，作为下一步的初值
+        current_u = self.u.copy()
+
+        for step in range(1, n_substeps + 1):
+            load_factor = step / n_substeps
+            current_target_f = target_f_ext * load_factor
+            
+            # print(f"  [Solver] Sub-step {step}/{n_substeps} (Load: {load_factor*100:.0f}%)")
+            
+            # 3. Newton-Raphson 迭代
+            for k in range(max_iter):
+                # 注入当前位移到 C++
+                self.cpp.set_current_displacement(current_u)
                 
-            # 5. 检查收敛
-            res_norm = np.linalg.norm(residual_mod)
-            print(f"  Iter {k}: Residual Norm = {res_norm:.4e}")
+                # 获取 K 和 f_int
+                try:
+                    K_tangent = self.cpp.gen_tangent_stiffness() 
+                    f_int = np.array(self.cpp.gen_grad_f())
+                except Exception as e:
+                    print(f"    [Error] Geometry exploded at iter {k}")
+                    raise e
+
+                # 计算残差: R = f_ext - f_int
+                # 注意：这里用的是当前子步的目标力
+                residual = current_target_f - f_int
                 
-            if res_norm < tol:
-                print("  -> Converged.")
-                break
+                # 安全检查
+                if np.any(np.isnan(residual)):
+                    raise RuntimeError(f"Solver exploded at substep {step}, iter {k}: NaN.")
+
+                # 应用 BC
+                K_mod, residual_mod = self._apply_bc_to_system(K_tangent, residual)
                 
-            # 6. 求解
-            try:
-                du = spla.spsolve(K_mod, residual_mod)
-            except Exception as e:
-                print(f"  [Error] Linear solver failed: {e}")
-                break
-                    
-            # 7. 更新位移
-            self.u += du
+                # 收敛检查
+                res_norm = np.linalg.norm(residual_mod)
+                # print(f"    Iter {k}: Res = {res_norm:.4e}")
                 
-        self._export_data(step_index)
+                # 放宽子步的收敛条件，只要最终步收敛即可
+                current_tol = tol * 2.0 if step < n_substeps else tol
+                if res_norm < current_tol:
+                    break
+                
+                # 求解增量
+                try:
+                    du = spla.spsolve(K_mod, residual_mod)
+                except Exception as e:
+                    print(f"    [Linear Solver Fail] {e}")
+                    break
+                
+                # 4. [关键] 阻尼更新 (Damping)
+                # 防止一步迈太大导致网格翻转
+                # 0.7 是一个比较保守且通用的值
+                damping = 0.8 
+                current_u += damping * du
+            
+        # 更新最终位移
+        self.u = current_u
 
     def _export_data(self, step_idx):
         """

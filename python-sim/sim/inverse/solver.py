@@ -117,39 +117,22 @@ class InverseSolver:
                 print(f"[Error] Linear solve failed: {e}")
                 break
             
-           # Step 4: Recover & Update Strategy (核心修改)
-            E_computed = weights * E_tilde
+            # Step 4: Recover
+            E_new = weights * E_tilde
             
-            # [Fix 1] 符号修正 (与之前一致)
-            if np.mean(E_computed) < 0:
-                E_computed = -E_computed
-            
-            # [Fix 2] 阻尼更新 (Damping / Step Limiting)
-            # 防止一步跨度太大导致触底。我们限制每一步的变化率不超过 50%。
-            # E_new = (1 - beta) * E_old + beta * E_computed
-            beta = 0.6 # 更新率 (0.6 表示只采纳 60% 的新计算结果，保留 40% 的旧值惯性)
-            
-            E_proposed = (1.0 - beta) * self.current_E + beta * E_computed
-            
-            # [Fix 3] 软截断 (Soft Clamping)
-            # 强制 E 不低于物理下限
-            E_new = np.maximum(E_proposed, PHYSICAL_MIN_E)
-            
-            # [Fix 4] 异常值抑制 (Outlier Suppression)
-            # 如果某个点比平均值高/低太多(例如100倍)，可能是数值伪影，可以考虑抑制(可选)
-            # 这里我们依靠正则化，暂时不做硬性切除
+            # Sign Check (不再应该出现大面积负值)
+            neg_frac = np.mean(E_new < 0)
+            if neg_frac > 0.5:
+                print(f"  [Warn] {neg_frac*100:.1f}% negative E. Physics sign mismatch? Flipping.")
+                E_new = -E_new
+                
+            # Clamp
+            E_new = np.maximum(E_new, 2000.0) # 下限 100 Pa
             
             # Stats
             diff = np.linalg.norm(E_new - self.current_E) / np.linalg.norm(self.current_E)
-            
-            # 打印更详细的分布信息，监控触底比例
-            min_val = np.min(E_new)
-            hit_bottom_ratio = np.mean(E_new <= PHYSICAL_MIN_E + 1.0)
-            
             print(f"  E change: {diff:.4f}")
-            print(f"  Stats: Mean={np.mean(E_new):.1f}, Max={np.max(E_new):.1f}, Min={min_val:.1f}")
-            if hit_bottom_ratio > 0.05:
-                print(f"  [Warn] {hit_bottom_ratio*100:.1f}% cells hit lower bound ({PHYSICAL_MIN_E})")
+            print(f"  Stats: Mean={np.mean(E_new):.1f}, Max={np.max(E_new):.1f}, Min={np.min(E_new):.1f}")
             
             self.current_E = E_new
             
