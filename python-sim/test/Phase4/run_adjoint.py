@@ -38,7 +38,7 @@ def main():
     # 2. 初始化物理环境
     mesh_path = os.path.join(data_dir, mesh_filename)
     # 初始猜测：均匀的软背景 (20 kPa)
-    E_guess_val = 400000.0
+    E_guess_val = 200000.0
     init = ElasticInitializer(mesh_path, "data", E_guess_val, 0.49)
     
     # 3. 准备数据向量
@@ -68,7 +68,7 @@ def main():
     
     # 6. 运行反演
     x0 = np.ones(init.num_cells) * E_guess_val
-    E_final = solver.solve(x0, max_iter=200)
+    E_final = solver.solve(x0, total_steps=200)
     
     # 7. 保存结果
     output_vtk = os.path.join(data_dir, f"adjoint_result_frame{obs_step_idx}.vtk")
