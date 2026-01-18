@@ -14,6 +14,7 @@ data/
 *.py[cod]
 *$py.class
 *.txt
+*.vtk
 # 忽略 Python 3 的 __pycache__ 之外的字节码缓存文件
 *.so
 
