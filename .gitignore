@@ -5,7 +5,6 @@ build/
 python-sim/output_convergence_test/
 python-sim/output_patch_test/
 python-sim/output_temp/
-python-sim/data/box-3/
 cmake/
 data/
 
