@@ -29,7 +29,10 @@ PYBIND11_MODULE(elastic_body_module, m) {
 
         .def("gen_unit_geometric_forces", &ElasticBody::gen_unit_geometric_forces,
              "Compute the 12xN matrix of unit geometric forces (K-tensor basis) for inverse analysis.")
-        
+
+        .def("gen_lame_sensitivities", &ElasticBody::gen_lame_sensitivities, 
+             "Compute sensitivities w.r.t. Lame parameters (mu, lambda). Returns a pair (S_mu, S_la).")
+             
         .def_readwrite("f_sensor", &ElasticBody::f_sensor)
         .def_readwrite("we", &ElasticBody::we)
         .def_readwrite("due", &ElasticBody::due)

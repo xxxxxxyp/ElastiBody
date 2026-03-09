@@ -82,6 +82,13 @@ public:
     // 每一列是一个单元对4个节点(12个自由度)产生的内力 (假设 E=1)
     MatrixXd gen_unit_geometric_forces();
 
+    // --- 新增：张量弹性成像基底接口 ---
+    // 计算内力对 Lamé 参数 (mu, lambda) 的灵敏度
+    // 返回值是一个 pair:
+    //   first:  S_mu (12 x num_cells)，即 df_int / d_mu
+    //   second: S_la (12 x num_cells)，即 df_int / d_lambda
+    std::pair<MatrixXd, MatrixXd> gen_lame_sensitivities();
+
 private:
     vector<Vector3d> readNodes(const string &filename);
     vector<Vector4i> readCells(const string &filename);

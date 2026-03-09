@@ -590,3 +590,77 @@ MatrixXd ElasticBody::gen_unit_geometric_forces() {
     
     return unit_forces;
 }
+
+std::pair<MatrixXd, MatrixXd> ElasticBody::gen_lame_sensitivities() {
+    // 1. 准备输出矩阵 (12行, num_cells列)
+    // S_mu: 剪切灵敏度, S_la: 体积灵敏度
+    MatrixXd S_mu(12, num_cells);
+    MatrixXd S_la(12, num_cells);
+    
+    int t = 0;
+    
+    // 注意：这里使用的是 nodes_rt (Current Configuration)
+    // 请确保在 Python 端调用此函数前，已经通过 set_current_displacement 更新了位移
+    
+    for (const auto &cell : cells) {
+        // --- A. 几何运动学计算 (同 gen_grad_f) ---
+        for (int i = 0; i < 4; ++i) {
+            node_pos[i] = nodes_rt[cell[i]];
+        }
+        
+        Ds.col(0) = node_pos[1] - node_pos[0];
+        Ds.col(1) = node_pos[2] - node_pos[0];
+        Ds.col(2) = node_pos[3] - node_pos[0];
+        
+        F = Ds * Dm_inv_list[t];
+        Finv = F.inverse();
+        FinvT = Finv.transpose();
+        J = F.determinant();
+        
+        // 保护 logJ 防止数值崩溃 (当单元翻转时)
+        if (J <= 1e-8) J = 1e-8; 
+        logJ = log(J);
+
+        // --- B. 张量基底分解 ---
+        // Neo-Hookean Energy: Psi = mu/2*(Ic-3) - mu*lnJ + lambda/2*(lnJ)^2
+        // Piola Stress P = dPsi/dF
+        
+        // 1. 剪切基底 (Shear Basis): 对应 mu 的系数
+        // d(Psi)/d(mu) -> P_mu = F - FinvT
+        Matrix3d P_mu = F - FinvT;
+        
+        // 2. 体积基底 (Volumetric Basis): 对应 lambda 的系数
+        // d(Psi)/d(lambda) -> P_la = logJ * FinvT
+        Matrix3d P_la = logJ * FinvT;
+        
+        // --- C. 转换为节点力灵敏度 ---
+        // H = -volume * P * Dm_inv^T
+        // 这里的 H 是 3x3 矩阵，列向量对应节点 1, 2, 3 的力
+        
+        Matrix3d H_mu = -volume[t] * P_mu * Dm_inv_list[t].transpose();
+        Matrix3d H_la = -volume[t] * P_la * Dm_inv_list[t].transpose();
+        
+        // --- D. 填入输出矩阵 (展平为 12x1) ---
+        // 节点 0 的力由平衡条件得出: f0 = -(f1 + f2 + f3)
+        
+        // 填 S_mu
+        Vector3d f1_mu = H_mu.col(0);
+        Vector3d f2_mu = H_mu.col(1);
+        Vector3d f3_mu = H_mu.col(2);
+        Vector3d f0_mu = -f1_mu - f2_mu - f3_mu;
+        
+        S_mu.col(t) << f0_mu, f1_mu, f2_mu, f3_mu;
+        
+        // 填 S_la
+        Vector3d f1_la = H_la.col(0);
+        Vector3d f2_la = H_la.col(1);
+        Vector3d f3_la = H_la.col(2);
+        Vector3d f0_la = -f1_la - f2_la - f3_la;
+        
+        S_la.col(t) << f0_la, f1_la, f2_la, f3_la;
+        
+        t++;
+    }
+    
+    return {S_mu, S_la};
+}
