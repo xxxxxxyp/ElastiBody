@@ -5,9 +5,9 @@ build/
 python-sim/output_convergence_test/
 python-sim/output_patch_test/
 python-sim/output_temp/
-python-sim/data/
+python-sim/data/box-3/
 cmake/
-data/box-3/*.txt
+data/
 
 .vscode/
 # 忽略 .pyc、.pyo、.pyd 等编译后的字节码文件
