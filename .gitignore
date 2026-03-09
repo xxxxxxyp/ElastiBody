@@ -7,7 +7,7 @@ python-sim/output_patch_test/
 python-sim/output_temp/
 python-sim/data/
 cmake/
-data/
+data/box-3/
 
 .vscode/
 # 忽略 .pyc、.pyo、.pyd 等编译后的字节码文件
