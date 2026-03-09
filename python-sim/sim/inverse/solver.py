@@ -6,6 +6,9 @@ from .sensitivity import SensitivityBuilder
 from .regularization import Regularizer
 from ..models.nhookean import NHookeanForwardSolver
 
+SENSITIVITY_EPSILON_SCALE = 1e-10
+PHYSICAL_MIN_E = 2000.0
+
 class InverseSolver:
     def __init__(self, initializer, obs_step_idx=9, obs_step_list=None):
         self.init = initializer
@@ -95,12 +98,16 @@ class InverseSolver:
             else:
                 ignore_nodes_array = np.asarray(ignore_nodes, dtype=int).reshape(-1)
                 ignore_nodes_list = [ignore_nodes_array.copy() for _ in range(self.num_states)]
-        elif self.num_states == 1 and (
-            np.isscalar(ignore_nodes_list) or isinstance(ignore_nodes_list, np.ndarray)
-        ):
-            ignore_nodes_list = [np.asarray(ignore_nodes_list, dtype=int).reshape(-1)]
         else:
-            ignore_nodes_list = list(ignore_nodes_list)
+            ignore_nodes_entries = list(ignore_nodes_list)
+            if self.num_states == 1 and (
+                len(ignore_nodes_entries) == 0 or np.isscalar(ignore_nodes_entries[0])
+            ):
+                ignore_nodes_list = [np.asarray(ignore_nodes_entries, dtype=int).reshape(-1)]
+            elif self.num_states == 1 and isinstance(ignore_nodes_list, np.ndarray):
+                ignore_nodes_list = [np.asarray(ignore_nodes_list, dtype=int).reshape(-1)]
+            else:
+                ignore_nodes_list = ignore_nodes_entries
 
         if len(ignore_nodes_list) != self.num_states:
             raise ValueError(
@@ -125,7 +132,10 @@ class InverseSolver:
                 bc_nodes = self.surface_indices
             else:
                 bc_nodes = ignore_nodes
-                valid_dof_mask[np.repeat(ignore_nodes * 3, 3) + np.tile(np.arange(3), len(ignore_nodes))] = False
+                ignored_dofs = np.concatenate(
+                    [np.arange(3 * node_idx, 3 * node_idx + 3) for node_idx in ignore_nodes]
+                )
+                valid_dof_mask[ignored_dofs] = False
 
             valid_dof_masks.append(valid_dof_mask)
             bc_nodes_list.append(np.asarray(bc_nodes, dtype=int))
@@ -137,7 +147,8 @@ class InverseSolver:
         if max_magnitude <= 0.0:
             return np.ones(self.init.num_cells)
 
-        epsilon = 1e-10 * max(max_magnitude, 1.0)
+        # 用当前工况灵敏度最大值的极小比例作为稳定项，避免零列或超弱响应时分母为零。
+        epsilon = SENSITIVITY_EPSILON_SCALE * max_magnitude
         raw_weights = 1.0 / (sensitivity_magnitude**alpha + epsilon)
         return raw_weights / np.mean(raw_weights)
 
@@ -171,8 +182,6 @@ class InverseSolver:
                     "from force balance."
                 )
 
-        PHYSICAL_MIN_E = 2000.0
-        
         for k in range(max_iter):
             print(f"\n--- Iteration {k} ---")
             
