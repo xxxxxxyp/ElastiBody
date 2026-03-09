@@ -19,6 +19,9 @@ except ImportError as e:
     sys.exit(1)
 
 
+FIX_THRESHOLD_RATIO = 0.05
+
+
 def extract_fixed_nodes(state_idx, nodes, data_dir):
     """
     参考 analyze_bc_frame1.py 中的位移幅值阈值逻辑，
@@ -27,7 +30,7 @@ def extract_fixed_nodes(state_idx, nodes, data_dir):
     nodes_obs = np.loadtxt(os.path.join(data_dir, f"pnt{state_idx}.txt"))
     u = (nodes_obs - nodes.flatten()).reshape((-1, 3))
     u_mag = np.linalg.norm(u, axis=1)
-    fix_threshold = np.max(u_mag) * 0.05
+    fix_threshold = np.max(u_mag) * FIX_THRESHOLD_RATIO
     return np.where(u_mag < fix_threshold)[0]
 
 

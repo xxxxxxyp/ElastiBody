@@ -1,8 +1,12 @@
 import ast
+import os
 import unittest
 
 
-SCRIPT_PATH = "/home/runner/work/ElastiBody/ElastiBody/python-sim/test/Phase4/run_12states_joint_inversion.py"
+SCRIPT_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "run_12states_joint_inversion.py",
+)
 
 
 class TestRun12StatesJointInversionScript(unittest.TestCase):
@@ -15,12 +19,27 @@ class TestRun12StatesJointInversionScript(unittest.TestCase):
         compile(self.source, SCRIPT_PATH, "exec")
 
     def test_extract_fixed_nodes_function_exists(self):
-        function_names = [
-            node.name for node in self.tree.body if isinstance(node, ast.FunctionDef)
+        function_node = next(
+            (
+                node
+                for node in self.tree.body
+                if isinstance(node, ast.FunctionDef) and node.name == "extract_fixed_nodes"
+            ),
+            None,
+        )
+        self.assertIsNotNone(function_node)
+
+        loadtxt_calls = [
+            node
+            for node in ast.walk(function_node)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "loadtxt"
         ]
-        self.assertIn("extract_fixed_nodes", function_names)
-        self.assertIn('np.loadtxt(os.path.join(data_dir, f"pnt{state_idx}.txt"))', self.source)
-        self.assertIn("fix_threshold = np.max(u_mag) * 0.05", self.source)
+        self.assertTrue(loadtxt_calls)
+        self.assertIn('f"pnt{state_idx}.txt"', self.source)
+        self.assertIn("FIX_THRESHOLD_RATIO = 0.05", self.source)
+        self.assertIn("fix_threshold = np.max(u_mag) * FIX_THRESHOLD_RATIO", self.source)
         self.assertIn("return np.where(u_mag < fix_threshold)[0]", self.source)
 
     def test_joint_solver_configuration_is_present(self):
