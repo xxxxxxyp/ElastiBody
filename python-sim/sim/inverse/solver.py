@@ -124,6 +124,34 @@ class InverseSolver:
                 normalized.append(np.asarray(nodes, dtype=int).reshape(-1))
         return normalized
 
+    def _normalize_observed_nodes_list(self, observed_nodes_list):
+        if observed_nodes_list is None:
+            observed_nodes_list = [None] * self.num_states
+        else:
+            observed_nodes_entries = list(observed_nodes_list)
+            if self.num_states == 1 and (
+                len(observed_nodes_entries) == 0 or np.isscalar(observed_nodes_entries[0])
+            ):
+                observed_nodes_list = [np.asarray(observed_nodes_entries, dtype=int).reshape(-1)]
+            elif self.num_states == 1 and isinstance(observed_nodes_list, np.ndarray):
+                observed_nodes_list = [np.asarray(observed_nodes_list, dtype=int).reshape(-1)]
+            else:
+                observed_nodes_list = observed_nodes_entries
+
+        if len(observed_nodes_list) != self.num_states:
+            raise ValueError(
+                f"observed_nodes_list length ({len(observed_nodes_list)}) must match obs_step_list "
+                f"length ({self.num_states})."
+            )
+
+        normalized = []
+        for nodes in observed_nodes_list:
+            if nodes is None:
+                normalized.append(None)
+            else:
+                normalized.append(np.asarray(nodes, dtype=int).reshape(-1))
+        return normalized
+
     def _build_valid_dof_masks(self, ignore_nodes_list):
         valid_dof_masks = []
         bc_nodes_list = []
@@ -161,10 +189,11 @@ class InverseSolver:
 
     def solve_alternating(
         self,
-        lambda_reg=1e-12,
+        lambda_reg=1e-6,
         max_iter=10,
         ignore_nodes=None,
         ignore_nodes_list=None,
+        observed_nodes_list=None,
         alpha=0.5,
     ):
         """
@@ -174,6 +203,7 @@ class InverseSolver:
         print(f"\n=== Starting Inverse Optimization (Reg={lambda_reg}, Alpha={alpha}) ===")
 
         ignore_nodes_list = self._normalize_ignore_nodes_list(ignore_nodes, ignore_nodes_list)
+        observed_nodes_list = self._normalize_observed_nodes_list(observed_nodes_list)
         valid_dof_masks, bc_nodes_list = self._build_valid_dof_masks(ignore_nodes_list)
 
         for state_idx, ignore_nodes_state in enumerate(ignore_nodes_list):
@@ -206,7 +236,22 @@ class InverseSolver:
                 f_ext_masked = f_ext_state[valid_dof_mask]
 
                 fwd_solver = NHookeanForwardSolver(self.init)
-                fwd_solver.set_dirichlet_bc(bc_nodes_list[state_idx])
+                fixed_nodes = (
+                    bc_nodes_list[state_idx]
+                    if (bc_nodes_list is not None and bc_nodes_list[state_idx] is not None)
+                    else np.array([], dtype=int)
+                )
+                observed_nodes = (
+                    observed_nodes_list[state_idx]
+                    if (observed_nodes_list is not None and observed_nodes_list[state_idx] is not None)
+                    else np.array([], dtype=int)
+                )
+                fwd_bc_nodes = np.unique(np.concatenate((fixed_nodes, observed_nodes)))
+
+                if len(fwd_bc_nodes) > 0:
+                    fwd_solver.set_dirichlet_bc(fwd_bc_nodes)
+                else:
+                    fwd_solver.set_dirichlet_bc([])
                 fwd_solver.u = u_meas_state.copy()
 
                 fwd_solver.solve_static_step(f_ext_state, step_index=self.obs_step_list[state_idx], tol=1e-5)

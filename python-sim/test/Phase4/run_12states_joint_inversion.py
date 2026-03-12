@@ -68,9 +68,11 @@ if __name__ == "__main__":
     # 2. 定义工况列表并逐工况提取真实物理边界
     obs_steps = list(range(1, 13))
     ignore_nodes_list = []
+    observed_nodes_list = []
     for state_idx in obs_steps:
         fixed_nodes, observed_nodes = load_physics_masks(state_idx, data_dir)
         ignore_nodes_list.append(fixed_nodes)
+        observed_nodes_list.append(observed_nodes)
         print(
             f"[BC] State {state_idx}: detected {len(fixed_nodes)} fixed nodes, "
             f"{len(observed_nodes)} observed nodes."
@@ -84,6 +86,7 @@ if __name__ == "__main__":
         lambda_reg=1e-15,
         max_iter=20,
         ignore_nodes_list=ignore_nodes_list,
+        observed_nodes_list=observed_nodes_list,
         alpha=0.6,
     )
 
