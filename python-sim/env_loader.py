@@ -9,7 +9,7 @@ DLL_DIRS = [
     r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\bin"
 ]
 # CMake 编译输出目录
-BUILD_DIR = r"C:\Projects\Elastography with K-tensor\TactileElastography-plus\Elasticbody\build"
+BUILD_DIR = r"D:\Projects\Elastography with K-tensor\TactileElastography-plus\Elasticbody\build"
 
 # === 自动注入逻辑 ===
 def setup():
