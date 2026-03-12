@@ -134,6 +134,7 @@ class TestJointInverseSolver(unittest.TestCase):
                 lambda_reg=0.0,
                 max_iter=1,
                 ignore_nodes_list=[np.array([0]), np.array([1])],
+                observed_nodes_list=[np.array([2]), np.array([2, 3])],
                 alpha=0.0,
             )
 
@@ -146,8 +147,8 @@ class TestJointInverseSolver(unittest.TestCase):
         )
         np.testing.assert_allclose(captured["objective_at_2"], 22.0, atol=1e-12)
         np.testing.assert_allclose(captured["gradient_at_2"], np.array([13.0]), atol=1e-12)
-        np.testing.assert_array_equal(self.initializer.bc_history[0], np.array([0]))
-        np.testing.assert_array_equal(self.initializer.bc_history[1], np.array([1]))
+        np.testing.assert_array_equal(self.initializer.bc_history[0], np.array([0, 2]))
+        np.testing.assert_array_equal(self.initializer.bc_history[1], np.array([1, 2, 3]))
         np.testing.assert_allclose(result, np.array([3000.0]))
         self.assertEqual(self.initializer.commit_calls, 1)
 
@@ -156,6 +157,12 @@ class TestJointInverseSolver(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             solver.solve_alternating(max_iter=1, ignore_nodes_list=[np.array([0])])
+
+    def test_observed_nodes_list_length_must_match_state_count(self):
+        solver = solver_module.InverseSolver(self.initializer, obs_step_list=[1, 5])
+
+        with self.assertRaises(ValueError):
+            solver.solve_alternating(max_iter=1, observed_nodes_list=[np.array([0])])
 
 
 if __name__ == "__main__":
