@@ -18,12 +18,12 @@ class TestRun12StatesJointInversionScript(unittest.TestCase):
     def test_script_is_valid_python(self):
         compile(self.source, SCRIPT_PATH, "exec")
 
-    def test_extract_fixed_nodes_function_exists(self):
+    def test_load_physics_masks_function_exists(self):
         function_node = next(
             (
                 node
                 for node in self.tree.body
-                if isinstance(node, ast.FunctionDef) and node.name == "extract_fixed_nodes"
+                if isinstance(node, ast.FunctionDef) and node.name == "load_physics_masks"
             ),
             None,
         )
@@ -37,15 +37,22 @@ class TestRun12StatesJointInversionScript(unittest.TestCase):
             and node.func.attr == "loadtxt"
         ]
         self.assertTrue(loadtxt_calls)
-        self.assertIn('f"pnt{state_idx}.txt"', self.source)
-        self.assertIn("FIX_THRESHOLD_RATIO = 0.05", self.source)
-        self.assertIn("fix_threshold = np.max(u_mag) * FIX_THRESHOLD_RATIO", self.source)
-        self.assertIn("return np.where(u_mag < fix_threshold)[0]", self.source)
+        self.assertIn('f"A-{state_idx}.txt"', self.source)
+        self.assertIn('f"B-{state_idx}.txt"', self.source)
+        self.assertIn("if not os.path.exists(filepath):", self.source)
+        self.assertIn("if data.ndim == 1 and len(data) >= 2:", self.source)
+        self.assertIn("dofs = data[:, 0].astype(int)", self.source)
+        self.assertIn("return np.unique(dofs // 3)", self.source)
+        self.assertIn("return fixed_nodes, observed_nodes", self.source)
 
     def test_joint_solver_configuration_is_present(self):
         self.assertIn("obs_steps = list(range(1, 13))", self.source)
         self.assertIn("solver = InverseSolver(init, obs_step_list=obs_steps)", self.source)
         self.assertIn("ignore_nodes_list=ignore_nodes_list", self.source)
+        self.assertIn("fixed_nodes, observed_nodes = load_physics_masks(state_idx, data_dir)", self.source)
+        self.assertIn("ignore_nodes_list.append(fixed_nodes)", self.source)
+        self.assertIn('f"[BC] State {state_idx}: detected {len(fixed_nodes)} fixed nodes, "', self.source)
+        self.assertIn('f"{len(observed_nodes)} observed nodes."', self.source)
         self.assertIn("lambda_reg=1e-15", self.source)
         self.assertIn("max_iter=20", self.source)
         self.assertIn("alpha=0.6", self.source)

@@ -19,19 +19,31 @@ except ImportError as e:
     sys.exit(1)
 
 
-FIX_THRESHOLD_RATIO = 0.05
-
-
-def extract_fixed_nodes(state_idx, nodes, data_dir):
+def load_physics_masks(state_idx, data_dir):
     """
-    参考 analyze_bc_frame1.py 中的位移幅值阈值逻辑，
-    根据某一工况的观测位移自动识别近似固定节点。
+    从 A 矩阵提取 Dirichlet 边界 (固定节点)
+    从 B 矩阵提取 观测掩码 (表面可见节点)
+    文件格式: row col value。由于每一行代表一个自由度 (DOF)，节点索引 = DOF // 3
     """
-    nodes_obs = np.loadtxt(os.path.join(data_dir, f"pnt{state_idx}.txt"))
-    u = (nodes_obs - nodes.flatten()).reshape((-1, 3))
-    u_mag = np.linalg.norm(u, axis=1)
-    fix_threshold = np.max(u_mag) * FIX_THRESHOLD_RATIO
-    return np.where(u_mag < fix_threshold)[0]
+    A_path = os.path.join(data_dir, f"A-{state_idx}.txt")
+    B_path = os.path.join(data_dir, f"B-{state_idx}.txt")
+
+    def extract_nodes_from_coo(filepath):
+        if not os.path.exists(filepath):
+            return np.array([], dtype=int)
+        data = np.loadtxt(filepath)
+        if data.ndim == 1 and len(data) >= 2:
+            data = data.reshape(1, -1)
+        if data.size == 0:
+            return np.array([], dtype=int)
+
+        dofs = data[:, 0].astype(int)
+        return np.unique(dofs // 3)
+
+    fixed_nodes = extract_nodes_from_coo(A_path)
+    observed_nodes = extract_nodes_from_coo(B_path)
+
+    return fixed_nodes, observed_nodes
 
 
 if __name__ == "__main__":
@@ -53,13 +65,16 @@ if __name__ == "__main__":
     init.output_dir = data_dir
     init.model_name = model_name
 
-    # 2. 定义工况列表并逐工况提取固定节点
+    # 2. 定义工况列表并逐工况提取真实物理边界
     obs_steps = list(range(1, 13))
     ignore_nodes_list = []
     for state_idx in obs_steps:
-        fixed_nodes = extract_fixed_nodes(state_idx, init.nodes, data_dir)
+        fixed_nodes, observed_nodes = load_physics_masks(state_idx, data_dir)
         ignore_nodes_list.append(fixed_nodes)
-        print(f"[BC] State {state_idx}: detected {len(fixed_nodes)} fixed nodes.")
+        print(
+            f"[BC] State {state_idx}: detected {len(fixed_nodes)} fixed nodes, "
+            f"{len(observed_nodes)} observed nodes."
+        )
 
     # 3. 实例化联合求解器
     solver = InverseSolver(init, obs_step_list=obs_steps)
