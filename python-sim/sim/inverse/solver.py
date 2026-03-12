@@ -1,6 +1,6 @@
 import numpy as np
+import scipy.optimize as opt
 import scipy.sparse as sp
-import scipy.sparse.linalg as spla
 import os
 from .sensitivity import SensitivityBuilder
 from .regularization import Regularizer
@@ -8,6 +8,7 @@ from ..models.nhookean import NHookeanForwardSolver
 
 SENSITIVITY_EPSILON_SCALE = 1e-10
 PHYSICAL_MIN_E = 2000.0
+PHYSICAL_MAX_E = 500000.0
 
 class InverseSolver:
     def __init__(self, initializer, obs_step_idx=9, obs_step_list=None):
@@ -242,24 +243,71 @@ class InverseSolver:
             # ----------------------------------------------------------
             Reg = lambda_reg * (self.L_matrix @ W_reg).T @ (self.L_matrix @ W_reg)
             A_sys = A_sys_total + Reg
-            
+
+            # ----------------------------------------------------------
+            # 将原线性方程 A_sys x = b_sys 转写为等价的二次型最小化问题：
+            #
+            #   f(x) = 1/2 x^T A_sys x - b_sys^T x
+            #
+            # 对该目标函数求梯度可得：
+            #
+            #   ∇f(x) = A_sys x - b_sys
+            #
+            # 这样做的好处是：我们可以在求解 E_tilde 时直接引入物理边界约束，
+            # 避免无约束线性求解在低灵敏度区域被噪声放大，产生极高/极低的振荡伪影。
+            # 下面统一使用稀疏矩阵 .dot() 来计算矩阵向量乘法，兼顾数值效率与内存占用。
+            # ----------------------------------------------------------
+            def objective_fn(x):
+                ax = A_sys.dot(x)
+                return 0.5 * x.dot(ax) - b_sys_total.dot(x)
+
+            def gradient_fn(x):
+                return A_sys.dot(x) - b_sys_total
+
+            # ----------------------------------------------------------
+            # 最终材料场满足 E_new = mean_weights * E_tilde，因此优化变量 E_tilde
+            # 的边界必须按 mean_weights 反向缩放。
+            #
+            # 对每个单元 i：
+            #   PHYSICAL_MIN_E <= mean_weights[i] * E_tilde[i] <= PHYSICAL_MAX_E
+            #
+            # 等价得到：
+            #   PHYSICAL_MIN_E / mean_weights[i] <= E_tilde[i]
+            #       <= PHYSICAL_MAX_E / mean_weights[i]
+            #
+            # 这保证优化器求出的 E_new 天然落在物理可接受区间内，不再需要事后
+            # 的符号翻转或硬截断。
+            # ----------------------------------------------------------
+            bounds = [
+                (
+                    PHYSICAL_MIN_E / mean_weights[i],
+                    PHYSICAL_MAX_E / mean_weights[i],
+                )
+                for i in range(self.init.num_cells)
+            ]
+            x0 = self.current_E / mean_weights
+
             try:
-                E_tilde = spla.spsolve(A_sys, b_sys_total)
+                res = opt.minimize(
+                    objective_fn,
+                    x0,
+                    jac=gradient_fn,
+                    bounds=bounds,
+                    method="L-BFGS-B",
+                    options={"ftol": 1e-9, "gtol": 1e-5},
+                )
             except Exception as e:
-                print(f"[Error] Linear solve failed: {e}")
+                print(f"[Error] Optimization solve failed: {e}")
                 break
+
+            if not res.success:
+                print(f"[Error] Optimization did not converge: {res.message}")
+                break
+
+            E_tilde = res.x
             
             # Step 4: Recover
             E_new = mean_weights * E_tilde
-            
-            # Sign Check (不再应该出现大面积负值)
-            neg_frac = np.mean(E_new < 0)
-            if neg_frac > 0.5:
-                print(f"  [Warn] {neg_frac*100:.1f}% negative E. Physics sign mismatch? Flipping.")
-                E_new = -E_new
-                
-            # Clamp
-            E_new = np.maximum(E_new, PHYSICAL_MIN_E)
             
             # Stats
             diff = np.linalg.norm(E_new - self.current_E) / np.linalg.norm(self.current_E)

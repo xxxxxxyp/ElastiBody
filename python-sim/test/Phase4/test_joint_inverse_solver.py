@@ -119,13 +119,17 @@ class TestJointInverseSolver(unittest.TestCase):
         solver = solver_module.InverseSolver(self.initializer, obs_step_list=[1, 5])
         captured = {}
 
-        def fake_spsolve(matrix, rhs):
-            captured["A"] = matrix.toarray()
-            captured["b"] = np.asarray(rhs, dtype=float)
-            return np.array([3000.0])
+        def fake_minimize(fun, x0, jac, bounds, method, options):
+            captured["x0"] = np.asarray(x0, dtype=float)
+            captured["bounds"] = bounds
+            captured["method"] = method
+            captured["options"] = options
+            captured["objective_at_2"] = fun(np.array([2.0]))
+            captured["gradient_at_2"] = jac(np.array([2.0]))
+            return mock.Mock(success=True, x=np.array([3000.0]))
 
         with mock.patch.object(solver_module, "NHookeanForwardSolver", FakeForwardSolver), \
-             mock.patch.object(solver_module.spla, "spsolve", side_effect=fake_spsolve):
+             mock.patch.object(solver_module.opt, "minimize", side_effect=fake_minimize):
             result = solver.solve_alternating(
                 lambda_reg=0.0,
                 max_iter=1,
@@ -133,8 +137,15 @@ class TestJointInverseSolver(unittest.TestCase):
                 alpha=0.0,
             )
 
-        np.testing.assert_allclose(captured["A"], np.array([[2.0]]), atol=1e-12)
-        np.testing.assert_allclose(captured["b"], np.array([-9.0]), atol=1e-12)
+        self.assertEqual(captured["method"], "L-BFGS-B")
+        self.assertEqual(captured["options"], {"ftol": 1e-9, "gtol": 1e-5})
+        np.testing.assert_allclose(captured["x0"], np.array([10000.0]), atol=1e-12)
+        self.assertEqual(
+            captured["bounds"],
+            [(solver_module.PHYSICAL_MIN_E, solver_module.PHYSICAL_MAX_E)],
+        )
+        np.testing.assert_allclose(captured["objective_at_2"], 22.0, atol=1e-12)
+        np.testing.assert_allclose(captured["gradient_at_2"], np.array([13.0]), atol=1e-12)
         np.testing.assert_array_equal(self.initializer.bc_history[0], np.array([0]))
         np.testing.assert_array_equal(self.initializer.bc_history[1], np.array([1]))
         np.testing.assert_allclose(result, np.array([3000.0]))
