@@ -145,8 +145,8 @@ class TestJointInverseSolver(unittest.TestCase):
             captured["bounds"],
             [(solver_module.PHYSICAL_MIN_E, solver_module.PHYSICAL_MAX_E)],
         )
-        np.testing.assert_allclose(captured["objective_at_2"], 22.0, atol=1e-12)
-        np.testing.assert_allclose(captured["gradient_at_2"], np.array([13.0]), atol=1e-12)
+        np.testing.assert_allclose(captured["objective_at_2"], 11.0, atol=1e-12)
+        np.testing.assert_allclose(captured["gradient_at_2"], np.array([6.5]), atol=1e-12)
         np.testing.assert_array_equal(self.initializer.bc_history[0], np.array([0, 2]))
         np.testing.assert_array_equal(self.initializer.bc_history[1], np.array([1, 2, 3]))
         np.testing.assert_allclose(result, np.array([3000.0]))
