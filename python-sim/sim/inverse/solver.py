@@ -302,12 +302,17 @@ class InverseSolver:
             # 避免无约束线性求解在低灵敏度区域被噪声放大，产生极高/极低的振荡伪影。
             # 下面统一使用稀疏矩阵 .dot() 来计算矩阵向量乘法，兼顾数值效率与内存占用。
             # ----------------------------------------------------------
+            max_diag = np.max(np.abs(A_sys.diagonal()))
+            scale_factor = 1.0 / max_diag if max_diag > 1e-20 else 1.0
+
+            A_opt = A_sys * scale_factor
+            b_opt = b_sys_total * scale_factor
+
             def objective_fn(x):
-                ax = A_sys.dot(x)
-                return 0.5 * x.dot(ax) - b_sys_total.dot(x)
+                return 0.5 * x.T @ A_opt.dot(x) - b_opt.dot(x)
 
             def gradient_fn(x):
-                return A_sys.dot(x) - b_sys_total
+                return A_opt.dot(x) - b_opt
 
             # ----------------------------------------------------------
             # 最终材料场满足 E_new = mean_weights * E_tilde，因此优化变量 E_tilde
